@@ -1,0 +1,108 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8-unix -*-
+
+import sys
+import os
+import glob
+import pexpect
+import logging
+
+from argparse import ArgumentParser
+from fileinput import FileInput
+#from IPython import embed
+
+log = logging.getLogger(__name__)
+
+def format_usage():
+    p = os.path.basename(sys.argv[0])
+    return """
+{p} - Control U-Boot
+Usage: {p} [option] <input-files...>
+Options:
+  -D|--debug <level>  : Debug level ('INFO', 'DEBUG', ...)
+  -p|--prompt <prompt>: Prompt to wait for (ex: "U-Boot>")
+  -s|--shell <command>: Command to interact (ex: "cu -s 9600 -l /dev/ttyS1")
+  -t|--timeout <secs> : Timeout in seconds
+Example:
+  $ {p} -p 'CNCl800L>' -s 'cu -s 115200 -l /dev/ttyUSB6' input.cmd
+""".lstrip().format(**locals())
+
+def usage():
+    sys.stderr.write(format_usage())
+    sys.exit(0)
+
+def main(ctx):
+    pc = pexpect.spawn(ctx.opt.shell, timeout=ctx.opt.timeout)
+
+    if not ctx.opt.quiet:
+        pc.logfile = sys.stdout.buffer
+
+    ps0 = ctx.opt.prompt.copy()
+    ps0.append("Hit any key to stop autoboot")
+
+    pc.sendline();
+    pc.expect(ps0)
+    pc.sendline();
+    pc.expect(ctx.opt.prompt)
+
+    log.debug("connected")
+
+    fi = FileInput(files=ctx.opt.args)
+    while True:
+        line = fi.readline()
+        filename = fi.filename()
+        lineno = fi.lineno()
+        if not line: break
+
+        if line.startswith("#"):
+            log.info(line.rstrip())
+            continue
+
+        cmd = line.rstrip()
+        if cmd:
+            log.debug("[{filename}:{lineno}] {cmd}".format(**locals()))
+            pc.sendline(cmd)
+            pc.expect(ctx.opt.prompt)
+
+    log.debug("add safe command in history...")
+    pc.sendline("echo hogehoge")
+    pc.expect(ctx.opt.prompt)
+
+    log.debug("done")
+    pc.close()
+
+def find_port():
+    found = []
+    found += glob.glob("/dev/ttyUSB*")
+    found += glob.glob("/dev/ttyACM*")
+    found += glob.glob("/dev/ttyS*")
+    return found[0]
+
+def cu(port, speed=115200):
+    return "cu -s {speed} -l {port}".format(**locals())
+    
+if __name__ == '__main__' and '__file__' in globals():
+    ap = ArgumentParser()
+    ap.format_usage = ap.format_help = format_usage
+
+    ap.add_argument('-D', '--debug', default='WARN')
+    ap.add_argument('-p', '--prompt', action='append')
+    ap.add_argument('-s', '--shell')
+    ap.add_argument('-t', '--timeout', type=int, default=300)
+    ap.add_argument('-q', '--quiet', action='store_true')
+    ap.add_argument('args', nargs='*')
+
+    opt = ap.parse_args()
+
+    # Set defaults that are useful to me :-)
+    opt.prompt = opt.prompt if opt.prompt else ["CNCl800L>"]
+    opt.shell = opt.shell if opt.shell else cu(find_port())
+
+    #embed()
+
+    if not opt.args: usage()
+    logging.basicConfig(level=eval('logging.' + opt.debug))
+
+    ctx = lambda:0
+    ctx.opt = opt
+    main(ctx)
