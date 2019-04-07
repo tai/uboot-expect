@@ -23,6 +23,7 @@ Options:
   -p|--prompt <prompt>: Prompt to wait for (ex: "U-Boot>")
   -s|--shell <command>: Command to interact (ex: "cu -s 9600 -l /dev/ttyS1")
   -t|--timeout <secs> : Timeout in seconds
+  -q|--quiet          : Do now show input/output
 Example:
   $ {p} -p 'CNCl800L>' -s 'cu -s 115200 -l /dev/ttyUSB6' input.cmd
 """.lstrip().format(**locals())
